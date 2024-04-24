@@ -1,4 +1,4 @@
-Linux kernel
+Shore-Kernel
 ============
 
 For building the kernel with DFA options (Please use Ubuntu 20.04 as it ships with Linux kernel version 5.11):

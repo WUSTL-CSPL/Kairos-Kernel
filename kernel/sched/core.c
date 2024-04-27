@@ -5026,11 +5026,13 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 			p = pick_next_task_idle(rq);
 		}
 
-
 #ifdef CONFIG_DataflowAvailability_SCHED
 		// Check if the task is a dataflow task
 		// No lock needed since __schedule already has the lock
-		start_time = ktime_get_ns();
+		
+		// For evaluation
+		// start_time = ktime_get_ns();
+
 		tmp = shore_find_id_helper(p->pid);
 		if (tmp && p) {
 			if (tmp->shore_priority == PRIOTIZED) {
@@ -5049,10 +5051,12 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 				p->static_prio = tmp->original_priority;
 			}
 		}
-		end_time = ktime_get_ns();
-		if (tmp) {
-			printk_ratelimited(KERN_INFO "[Shore Eval] CPU SCHED time: %llu\n\n", end_time - start_time);
-		}
+		
+		// end_time = ktime_get_ns();
+		
+		// if (tmp) {
+		// 	printk_ratelimited(KERN_INFO "[Shore Eval] CPU SCHED time: %llu\n\n", end_time - start_time);
+		// }
 		
 		
 #endif // End - CONFIG_DataflowAvailability_SCHED
@@ -5069,8 +5073,12 @@ restart:
 
 		if (p) {
 #ifdef CONFIG_DataflowAvailability_SCHED
-			start_time = ktime_get_ns();
+
+			// For evaluation
+			// start_time = ktime_get_ns();
+
 			tmp = shore_find_id_helper(p->pid);
+
 			if (tmp) {
 				// For evaluation
 				// pick_task_time = ktime_get_ns();
@@ -5091,10 +5099,11 @@ restart:
 					p->static_prio = tmp->original_priority;
 				}
 			}
-			end_time = ktime_get_ns();
-			if (tmp) {
-				printk_ratelimited(KERN_INFO "[Shore Eval] CPU SCHED time: %llu\n\n", end_time - start_time);
-			}
+
+			// end_time = ktime_get_ns();
+			// if (tmp) {
+			// 	printk_ratelimited(KERN_INFO "[Shore Eval] CPU SCHED time: %llu\n\n", end_time - start_time);
+			// }
 #endif // End - CONFIG_DataflowAvailability_SCHED
 			return p;
 		}

@@ -69,7 +69,8 @@ enum shore_priority_codes {
 	NO_TASK = -1,
 	PRIOTIZED = 0,
 	PRIOTIZED_SET = 1,
-	ABORTED = 2,
+	TO_PRIOTIZE = 2,
+	ABORTED = 3,
 };
 
 
@@ -78,12 +79,15 @@ struct shore_task_info {
     struct list_head list; // Kernel's list structure
 	enum shore_priority_codes shore_priority;
 	int original_priority;
+	int kernel_task_id;
 
 	//Lock for shore_task_info
 	raw_spinlock_t lock;
 };
 
 static LIST_HEAD(shore_cpu_task_list);
+// Maybe make it static
+atomic_t isDoingDFA = ATOMIC_INIT(0);;
 
 void shore_cpu_task_lock(struct shore_task_info *entry) {
 	raw_spin_lock(&entry->lock);
@@ -115,16 +119,65 @@ void shore_add_cpu_task_to_dfa_list(int new_shore_id, int new_shore_priority) {
         return;
     }
 
-    new_entry->shore_id = new_shore_id;
+	new_entry->kernel_task_id = new_shore_id;
+    new_entry->shore_id = new_shore_id; // TODO change to new_shore_id
 	new_entry->shore_priority = new_shore_priority;
 	new_entry->original_priority = 0;
+
 	raw_spin_lock_init(&new_entry->lock);
     list_add_tail(&new_entry->list, &shore_cpu_task_list);
 
-	printk_ratelimited(KERN_INFO "[SHORE] Added shore_id: %d, shore_priority: %d\n", new_entry->shore_id, new_entry->shore_priority);
+	printk_ratelimited(KERN_INFO "[Shore-kernel] Added task_id: %d, mode: %d\n", new_entry->shore_id, new_entry->shore_priority);
+
+	atomic_set(&isDoingDFA, 0);
 
 	// For debugging purposes
 	// iterate_pid_list();
+}
+
+struct task_struct* shore_get_cpu_task_from_dfa_list(void) {
+
+	struct shore_task_info* entry;
+	struct shore_task_info* tmp;
+
+	struct task_struct* ret_task = NULL;
+	struct pid *pid_struct = NULL;
+
+	pid_t current_shore_pid = 0;
+
+	if (atomic_read(&isDoingDFA) == 1) {
+		return NULL;
+	}
+	
+	atomic_set(&isDoingDFA, 1);
+
+	// atomic_set(&isDoingDFA, );
+	// Put it where to set the priority back to normal
+
+	list_for_each_entry_safe(entry, tmp, &shore_cpu_task_list, list) {		
+		if (entry->shore_priority == PRIOTIZED) {
+
+
+			current_shore_pid = entry->shore_id;
+			pid_struct = find_get_pid(current_shore_pid);
+	
+			if (pid_struct == NULL) {
+				printk_ratelimited(KERN_INFO "[SHORE] Task with tid: %d not found\n", entry->shore_id);
+				return NULL;
+			}
+
+			ret_task = pid_task(pid_struct, PIDTYPE_PID);
+			if (ret_task == NULL) {
+				printk_ratelimited(KERN_INFO "[SHORE] Task with id: %d not found\n", entry->shore_id);
+				return NULL;
+			}
+			
+			return ret_task;
+		}
+	}
+
+	// No task needs to be prioritized
+	return NULL;
 }
 
 void shore_remove_cpu_task_from_dfa_list(int new_shore_id) {
@@ -139,8 +192,6 @@ void shore_remove_cpu_task_from_dfa_list(int new_shore_id) {
 			break;
 		}
 	}
-	
-
 	// For debugging purposes
 	// iterate_pid_list();
 }
@@ -161,7 +212,7 @@ int shore_set_cpu_task_priority(int shore_id, int shore_priority) {
     // Use list_for_each_entry to iterate over each entry of the list
     list_for_each_entry(entry, &shore_cpu_task_list, list) {
         if (entry->shore_id == shore_id) {
-			//Lock for writing
+			// Lock for writing
 //			shore_cpu_task_lock(entry);
 			entry->shore_priority = shore_priority;
 //			shore_cpu_task_unlock(entry);
@@ -176,6 +227,7 @@ EXPORT_SYMBOL(shore_set_cpu_task_priority);
 EXPORT_SYMBOL(shore_add_cpu_task_to_dfa_list);
 EXPORT_SYMBOL(shore_remove_cpu_task_from_dfa_list);
 EXPORT_SYMBOL(shore_remove_all_cpu_tasks_from_dfa_list);
+EXPORT_SYMBOL(shore_get_cpu_task_from_dfa_list);
 
 #endif // CONFIG_DataflowAvailability_SCHED
 
@@ -5004,7 +5056,49 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 #ifdef CONFIG_DataflowAvailability_SCHED
 	struct shore_task_info *tmp;
 	int old_prio;
-	u64 start_time, end_time;
+	// For evaluation
+	// u64 start_time, end_time;
+	
+	struct task_struct *dfa_task = NULL;
+
+	if (!list_empty(&shore_cpu_task_list)) {
+        // printk_ratelimited(KERN_INFO "The list is not empty.\n");
+		dfa_task = shore_get_cpu_task_from_dfa_list();
+    } 
+	// change the position
+	if (dfa_task != NULL) {
+		// Adjust the priority here.
+		tmp = shore_find_id_helper(dfa_task->pid);
+
+		if (tmp) {
+			tmp->original_priority = dfa_task->static_prio;
+
+			dfa_task->static_prio = NICE_TO_PRIO(MIN_NICE);
+			set_load_weight(dfa_task, true);
+			old_prio = dfa_task->prio;
+			dfa_task->prio = effective_prio(dfa_task);
+			
+			dfa_task->sched_class->prio_changed(rq, dfa_task, old_prio);
+			tmp->shore_priority = PRIOTIZED_SET;
+			printk(KERN_INFO "The task is prioritized set.\n"); // TOREMOVE
+
+			/*
+			tmp->original_priority = p->static_prio;
+
+			p->static_prio = NICE_TO_PRIO(MIN_NICE);
+			set_load_weight(p, true);
+			old_prio = p->prio;
+			p->prio = effective_prio(p);
+			p->sched_class->prio_changed(rq, p, old_prio);
+
+			tmp->shore_priority = PRIOTIZED_SET;
+			*/
+
+		} else {
+			printk_ratelimited(KERN_INFO "Corresponding dfa info is not found.\n");
+		}
+	}
+
 #endif // End - CONFIG_DataflowAvailability_SCHED
 
 	/*

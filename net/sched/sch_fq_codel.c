@@ -248,14 +248,14 @@ static unsigned int fq_codel_classify(struct sk_buff *skb, struct Qdisc *sch,
 	struct shore_net_task_info *tmp;
 	u64 start_time, end_time;
 
-	start_time = ktime_get_ns();
+	// start_time = ktime_get_ns();
 	if (skb->sk) {
 		if (skb->sk->sk_socket) {
 			if (skb->sk->sk_socket->file) {
 				if (skb->sk->sk_socket->file->f_owner.pid) {
 					tmp = shore_find_net_id_helper(pid_nr(skb->sk->sk_socket->file->f_owner.pid));
-					end_time = ktime_get_ns();
-					printk_ratelimited(KERN_INFO "[Shore Eval] Network SCHED time: %llu\n\n", end_time - start_time);
+					// end_time = ktime_get_ns();
+					// printk_ratelimited(KERN_INFO "[Shore Eval] Network SCHED time: %llu\n\n", end_time - start_time);
 					if (tmp) {
 						if (tmp->shore_net_priority == PRIOTIZED) {
 							// return TC_PRIO_INTERACTIVE;
